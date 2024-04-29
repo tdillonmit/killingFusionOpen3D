@@ -1,0 +1,154 @@
+# ########################################################################
+# Practical Course: GPU Programming in Computer Vision (SS 2018)
+# Technical University of Munich, Computer Vision Group
+# Bjoern Haefner, Robert Maier, David Schubert
+# ########################################################################
+
+CMAKE_MINIMUM_REQUIRED(VERSION 3.0 FATAL_ERROR)
+
+PROJECT(KillingFusionCuda LANGUAGES C CXX)
+
+# ------------------------------------------------------------------------
+# CMake configuration
+IF(NOT CMAKE_BUILD_TYPE)
+    # CMAKE_BUILD_TYPE: RelWithDebInfo, Release or Debug
+    SET(CMAKE_BUILD_TYPE RelWithDebInfo)
+ENDIF()
+
+# CMake paths
+# Externals directories (from environment variable "EXT")
+LIST(APPEND CMAKE_PREFIX_PATH "$ENV{EXT}")
+# include files in cmake subfolder
+LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+
+# CMake executable output path
+SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
+
+# ------------------------------------------------------------------------
+# dependencies
+
+# CUDA
+FIND_PACKAGE(CUDA REQUIRED)
+# SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-arch sm_35)
+# Set CUDA architecture flags
+set(CUDA_ARCH "sm_86" CACHE STRING "CUDA architecture to build for")
+string(APPEND CMAKE_CUDA_FLAGS " -gencode arch=${CUDA_ARCH},code=compute_${CUDA_ARCH}")
+
+SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};--ptxas-options=-v --use_fast_math -O3 --compiler-options -Wall)
+
+
+# Find installed Open3D, which exports Open3D::Open3D
+set(Open3D_DIR "/home/tdillon/open3d_install/lib/cmake/Open3D")
+find_package(Open3D HINTS ${CMAKE_INSTALL_PREFIX}/lib/CMake)
+
+list(APPEND Open3D_LIBRARIES dl)
+link_directories(${Open3D_LIBRARY_DIRS})
+#find_package(Open3D REQUIRED)
+
+
+
+# Eigen
+#SET(EIGEN_ROOT ${PROJECT_SOURCE_DIR}/third_party/include/eigen3)
+FIND_PACKAGE(Eigen REQUIRED)
+message("Eigen3 include directory: ${Eigen3_INCLUDE_DIR}")
+INCLUDE_DIRECTORIES(${EIGEN_INCLUDE_DIR})
+
+# OpenCV
+#FIND_PACKAGE(OpenCV 2.4.8 COMPONENTS core highgui imgproc video REQUIRED)
+FIND_PACKAGE(OpenCV COMPONENTS core highgui imgproc video REQUIRED)
+IF(OPENCV_CORE_FOUND)
+    INCLUDE_DIRECTORIES(${OpenCV_INCLUDE_DIRS})
+ENDIF()
+
+# ------------------------------------------------------------------------
+# C++ flags
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -funroll-loops -Wno-deprecated -pthread")
+IF(CMAKE_COMPILER_IS_GNUCC)
+    # Add -O0 to remove optimizations when using gcc
+    SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
+ENDIF()
+
+#==============================================================================
+# C++11 support
+#==============================================================================
+INCLUDE(CheckCXXCompilerFlag)
+#CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
+CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX14)
+
+CHECK_CXX_COMPILER_FLAG("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
+IF(COMPILER_SUPPORTS_CXX11)
+    #SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+    IF(BUILD_CUDA)
+        #SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -std=c++11)
+        SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -std=c++14)
+    ENDIF()
+ELSEIF(COMPILER_SUPPORTS_CXX0X)
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
+    IF(BUILD_CUDA)
+        SET(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -std=c++0x)
+    ENDIF()
+ELSE()
+    #MESSAGE(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
+    MESSAGE(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++14 support. Please use a different C++ compiler.")
+ENDIF()
+
+
+# ------------------------------------------------------------------------
+# preprocessor defines
+
+# source directory
+ADD_DEFINITIONS(-DKILLINGFUSION_SOURCE_DIR=${PROJECT_SOURCE_DIR})
+
+# ------------------------------------------------------------------------
+# include directory
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# ------------------------------------------------------------------------
+# executable
+SET(APP_NAME "killingfusion")
+CUDA_ADD_EXECUTABLE(${APP_NAME}
+	src/color.h        
+	src/marching_cubes.h src/marching_cubes.cpp
+        src/tsdf_volume.h src/tsdf_volume.cpp
+        src/dataset.h src/dataset.cpp
+        src/helper.cuh src/helper.cu
+        src/gradient.cuh src/gradient.cu
+        src/divergence.cuh src/divergence.cu
+	    src/magnitude.cuh src/magnitude.cu
+	    src/visualization.cuh src/visualization.cu
+        src/optimizer.cuh src/optimizer.cu
+        src/energyDerivatives.cuh src/energyDerivatives.cu
+        src/energy.cuh src/energy.cu
+        src/gridOperations.cuh src/gridOperations.cu
+        src/reduction.cuh src/reduction.cu
+        src/interpolator.cuh src/interpolator.cu
+        src/mat.h
+        src/main.cu
+)
+CUDA_ADD_CUBLAS_TO_TARGET(${APP_NAME})
+#TARGET_LINK_LIBRARIES(${APP_NAME} ${OpenCV_LIBS})
+TARGET_LINK_LIBRARIES(${APP_NAME} ${OpenCV_LIBS} Open3D::Open3D)
+
+#TARGET_COMPILE_OPTIONS(${APP_NAME} PRIVATE -std=c++11)
+TARGET_COMPILE_OPTIONS(${APP_NAME} PRIVATE -std=c++14)
+
+# SET(TEST_NAME "testFunctions")
+# CUDA_ADD_EXECUTABLE(${TEST_NAME}
+        # src/marching_cubes.h src/marching_cubes.cpp
+        # src/tsdf_volume.h src/tsdf_volume.cpp
+        # src/dataset.h src/dataset.cpp
+        # src/helper.cuh src/helper.cu
+        # src/convolution.cuh src/convolution.cu
+        # src/divergence.cuh src/divergence.cu
+		# src/magnitude.cuh src/magnitude.cu
+        # src/optimizer.cuh src/optimizer.cu
+        # src/energyDerivatives.cuh src/energyDerivatives.cu
+        # src/interpolator.cuh src/interpolator.cu
+        # src/mat.h
+        # src/testFunctions.cu
+# )
+# TARGET_LINK_LIBRARIES(${TEST_NAME} ${OpenCV_LIBS})
+# TARGET_COMPILE_OPTIONS(${TEST_NAME} PRIVATE -std=c++11)
+# TARGET_COMPILE_OPTIONS(${TEST_NAME} PRIVATE -std=c++14)
+
